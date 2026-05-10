@@ -6,10 +6,12 @@
 
 建立一個新的 Python Notebook，執行以下區塊。
 
-## 2) 啟用 GPU（建議）
+## 2) 硬體：CPU 或 GPU FAISS
 
-在 Colab：**執行階段 → 變更執行階段類型 → 硬體加速器選 T4 GPU**（可選；sklearn 與預設 **faiss-cpu** 仍主要吃 CPU）。  
-**注意**：Colab 目前多為 **Python 3.12**，PyPI 上的 **`faiss-gpu` 通常沒有 wheel**（會出現 `No matching distribution found`）。本專案 **`requirements.txt` 已預設 `faiss-cpu`**，可直接安裝成功。
+- **執行階段 → 變更執行階段類型 → T4 GPU**：若要 **GPU 版 FAISS 建索引**，請務必選 GPU；僅裝 `faiss-cpu` 時不會用到 GPU。
+- **sklearn**（TF-IDF、Ridge、SVD）在 Colab 仍主要跑在 **CPU**；GPU 主要加速 **FAISS 建索引**（有裝 `faiss-gpu-cu12` 且偵測到 GPU 時）。
+
+Colab 為 **Python 3.12** 時，請用 **`faiss-gpu-cu12`**（見下一節），不要用 PyPI 的 `faiss-gpu`（常無 wheel）。
 
 ## 3) 安裝套件與抓專案
 
@@ -65,6 +67,35 @@ if pip_install("requirements.txt") != 0:
     if not os.path.isfile("requirements-inference.txt") or pip_install("requirements-inference.txt") != 0:
         raise RuntimeError("pip install 仍失敗，請把上方 pip 錯誤訊息貼出來排查。")
 ```
+
+### 3b) 要用 GPU 版 FAISS 訓練（Colab T4 / CUDA 12）
+
+先完成上一格（已在 `sales-prediction` 目錄、已裝 `requirements.txt`）。再執行：**解除 `faiss-cpu`**，改裝 **`faiss-gpu-cu12`**（與 Python 3.12 相容的 CUDA 12 wheel）。
+
+```python
+import os
+import subprocess
+import sys
+
+subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "faiss-cpu"], check=False)
+subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "faiss"], check=False)
+
+p = subprocess.run(
+    [sys.executable, "-m", "pip", "install", "-U", "-r", "requirements-gpu-cu12.txt"],
+    cwd=os.getcwd(),
+    capture_output=True,
+    text=True,
+)
+print(p.stdout or "")
+print(p.stderr or "")
+if p.returncode != 0:
+    raise RuntimeError("faiss-gpu-cu12 安裝失敗，請把上方錯誤貼出排查。")
+
+import faiss
+print("faiss.get_num_gpus() =", faiss.get_num_gpus())
+```
+
+預期在已選 **T4** 的情況下，`faiss.get_num_gpus()` 至少為 **1**。接著跑訓練（第 5 節）時，`train.py` 會在 GPU 上建 FAISS 索引再存成 CPU 索引檔。
 
 若你確定要**刪掉舊目錄重新 clone**（會刪除該資料夾內所有檔案）：
 

@@ -16,17 +16,24 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-若你的環境能裝 **PyPI 的 `faiss-gpu`**（常見於 **較舊的 Python**，例如 3.10 / 3.11 + 對應 CUDA），可改用：
+**GPU 版 FAISS（CUDA 12，含 Google Colab T4 + Python 3.12）** 請用：
+
+```bash
+pip uninstall -y faiss-cpu faiss
+pip install -r requirements-gpu-cu12.txt
+```
+
+（套件名為 **`faiss-gpu-cu12`**，不要裝舊的 `faiss-gpu`，在 3.12 上常裝不起來。）
+
+若為 **較舊 Python + 舊 CUDA**，可再試：
 
 ```bash
 pip install -r requirements-gpu.txt
 ```
 
-> PyPI 上 **`faiss-gpu` 常沒有 Python 3.12 的 wheel**，因此會出現 `No matching distribution found for faiss-gpu`。這不是專案壞掉，而是套件發佈限制；需要 GPU 版時可改用 **conda** 或 **較舊的 Python venv**。
-
 ### 訓練用 GPU FAISS、推論用 CPU（建議部署方式）
 
-- **訓練**（`train.py`）：預設安裝 **`faiss-cpu`**；若已安裝 **`faiss-gpu`** 且 `faiss.get_num_gpus() > 0`，會在 GPU 上建索引，再 **`index_gpu_to_cpu`** 寫入 `models/name_sales_faiss.index`（**仍是 CPU 可讀索引**）。
+- **訓練**（`train.py`）：預設 **`faiss-cpu`**；若已安裝 **`faiss-gpu-cu12`**（或 **`faiss-gpu`**）且 `faiss.get_num_gpus() > 0`，會在 GPU 上建索引，再 **`index_gpu_to_cpu`** 寫入 `models/name_sales_faiss.index`（**仍是 CPU 可讀索引**）。
 - **推論 / Web**：一律 **`faiss.read_index` + `search`（CPU）**。部署機可只裝：
 
 ```bash
