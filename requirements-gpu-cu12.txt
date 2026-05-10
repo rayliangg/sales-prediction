@@ -1,5 +1,3 @@
-# FAISS with NVIDIA CUDA 12 wheels (Google Colab T4, many Linux + CUDA 12 hosts).
-# Install: pip uninstall -y faiss-cpu faiss 2>/dev/null; pip install -r requirements-gpu-cu12.txt
-# Do not install alongside faiss-cpu.
+# CUDA 12 FAISS (e.g. Colab T4). Uninstall faiss-cpu first: pip uninstall -y faiss-cpu faiss
 -r requirements-base.txt
 faiss-gpu-cu12

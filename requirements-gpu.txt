@@ -1,3 +1,0 @@
--r requirements-base.txt
-# Legacy name; often no wheel for Python 3.12. For CUDA 12 / Colab T4 use requirements-gpu-cu12.txt instead.
-faiss-gpu

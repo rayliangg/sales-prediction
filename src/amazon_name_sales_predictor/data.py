@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Iterable
 
-import kagglehub
+import numpy as np
 import pandas as pd
 
 
 DATASET_REF = "asaniczka/amazon-products-dataset-2023-1-4m-products"
+DEFAULT_LOCAL_CSV = Path("amazon_products.csv")
 
 NAME_CANDIDATES = ["title", "product_name", "name"]
 TARGET_CANDIDATES = ["boughtInLastMonth", "monthly_sales", "units_sold", "sales"]
@@ -22,8 +24,55 @@ CATEGORY_CANDIDATES = [
 
 def download_dataset() -> Path:
     """Download dataset via kagglehub and return local path."""
+    import kagglehub
+
     path = kagglehub.dataset_download(DATASET_REF)
     return Path(path)
+
+
+def filter_invalid_product_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop rows with invalid name / sales (and empty category when present). Keeps all columns."""
+    name_col = _find_column(df.columns, NAME_CANDIDATES)
+    target_col = _find_column(df.columns, TARGET_CANDIDATES)
+    if not name_col or not target_col:
+        return df
+
+    name = df[name_col].astype(str).str.strip()
+    sales = _to_numeric(df[target_col])
+    s = np.asarray(sales, dtype=float)
+    mask = (name.notna() & (name.str.len() > 3) & (s >= 0) & np.isfinite(s))
+    category_col = _find_column(df.columns, CATEGORY_CANDIDATES)
+    if category_col:
+        cat = df[category_col].astype(str).str.strip()
+        mask &= cat.notna() & (cat != "") & (cat.str.lower() != "nan")
+
+    out = df.loc[mask].reset_index(drop=True)
+    return out
+
+
+def load_dataset_csv(csv_path: Path, sample_n: int | None = 250_000) -> pd.DataFrame:
+    """Load a single products CSV (e.g. slimmed title,category_id,boughtInLastMonth)."""
+    csv_path = csv_path.expanduser().resolve()
+    if not csv_path.is_file():
+        raise FileNotFoundError(f"CSV not found: {csv_path}")
+    df = pd.read_csv(csv_path, low_memory=False)
+    df = filter_invalid_product_rows(df)
+    if sample_n and len(df) > sample_n:
+        df = df.sample(sample_n, random_state=42)
+    return df
+
+
+def resolve_local_csv_path(explicit: Path | None) -> Path | None:
+    """Pick a local CSV path: explicit arg > AMAZON_PRODUCTS_CSV > ./amazon_products.csv."""
+    if explicit is not None:
+        p = explicit.expanduser().resolve()
+        return p if p.is_file() else None
+    env = os.environ.get("AMAZON_PRODUCTS_CSV", "").strip()
+    if env:
+        p = Path(env).expanduser().resolve()
+        return p if p.is_file() else None
+    p = (Path.cwd() / DEFAULT_LOCAL_CSV).resolve()
+    return p if p.is_file() else None
 
 
 def _find_column(columns: Iterable[str], candidates: list[str]) -> str | None:
@@ -45,6 +94,8 @@ def load_dataset_frame(dataset_dir: Path, sample_n: int | None = 250_000) -> pd.
         df = pd.read_parquet(file_path)
     else:
         df = pd.read_csv(file_path, low_memory=False)
+
+    df = filter_invalid_product_rows(df)
 
     if sample_n and len(df) > sample_n:
         df = df.sample(sample_n, random_state=42)

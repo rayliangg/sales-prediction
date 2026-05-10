@@ -35,8 +35,6 @@ def predict_one(model_path: Path, product_name: str, top_k: int = 20) -> dict:
     if not index_path.exists():
         raise FileNotFoundError(f"FAISS index not found: {index_path}")
 
-    # CPU-only inference: index file is always written by train as a CPU index
-    # (even when train used faiss-gpu + index_gpu_to_cpu).
     index = faiss.read_index(str(index_path))
     top_k = max(1, min(int(top_k), len(train_names)))
     index.hnsw.efSearch = max(100, top_k)
@@ -64,9 +62,7 @@ def predict_one(model_path: Path, product_name: str, top_k: int = 20) -> dict:
                 "name": train_names[int(i)],
                 "sales": float(train_sales[int(i)]),
                 "category": str(train_categories[int(i)]),
-                # Higher inner product = more similar; expose as "distance" via negation for sorting UX.
                 "distance": -sim,
-                "similarity": sim,
             }
         )
 

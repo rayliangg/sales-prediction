@@ -1,2 +1,0 @@
-# Alias: default stack is already faiss-cpu (see requirements.txt).
--r requirements.txt

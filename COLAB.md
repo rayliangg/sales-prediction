@@ -1,164 +1,139 @@
-# Colab Training Guide
+# Colab Training
 
-這份指南讓你在 Google Colab 訓練模型，並把模型檔存到 Google Drive。
+`REPO_DIR` 須與 GitHub **repo 名稱**一致（例如 `sales-prediction`）。`--sample-n` 可自行改（`0` = 全量，很慢）。
 
-## 1) 開啟 Colab
+### 資料從哪裡讀（與本機相同）
 
-建立一個新的 Python Notebook，執行以下區塊。
+優先序：`--data-csv` → 環境變數 `AMAZON_PRODUCTS_CSV` → **`{REPO_DIR}/amazon_products.csv` 若存在** → 否則 **KaggleHub** 下載。
 
-## 2) 硬體：CPU 或 GPU FAISS
+在 Colab 可把 **`amazon_products.csv`** 上傳到 **`/content/sales-prediction/`**（與 `src/` 同層），再跑下方訓練，即會自動讀 CSV、**不會**再下載資料集。
 
-- **執行階段 → 變更執行階段類型 → T4 GPU**：若要 **GPU 版 FAISS 建索引**，請務必選 GPU；僅裝 `faiss-cpu` 時不會用到 GPU。
-- **sklearn**（TF-IDF、Ridge、SVD）在 Colab 仍主要跑在 **CPU**；GPU 主要加速 **FAISS 建索引**（有裝 `faiss-gpu-cu12` 且偵測到 GPU 時）。
+上傳後若要**整份 CSV 去掉非法列**（分塊重寫），在該目錄執行：
 
-Colab 為 **Python 3.12** 時，請用 **`faiss-gpu-cu12`**（見下一節），不要用 PyPI 的 `faiss-gpu`（常無 wheel）。
+`PYTHONPATH=src python scripts/clean_amazon_products_csv.py --input amazon_products.csv`
 
-## 3) 安裝套件與抓專案
+---
 
-`git clone` 後的資料夾名稱 = **GitHub 上的 repo 名稱**（例如 `sales-prediction`），**不是**本機資料夾名 `amazon-name-sales-predictor`。  
-請把下面 `REPO_URL` 改成你的倉庫網址；`REPO_DIR` 請與網址最後一段 repo 名一致。
-
-```python
-import os
-import subprocess
-
-REPO_URL = "https://github.com/rayliangg/sales-prediction.git"  # 改成你的
-REPO_DIR = "sales-prediction"  # 必須與 GitHub repo 名相同（clone 出來的資料夾名）
-
-root = "/content"
-target = os.path.join(root, REPO_DIR)
-
-def run(cmd, cwd=None):
-    print("+", " ".join(cmd) if isinstance(cmd, list) else cmd)
-    subprocess.run(cmd, cwd=cwd, check=True)
-
-
-def pip_install(req_file: str) -> int:
-    import sys
-
-    print("+", sys.executable, "-m pip install -r", req_file)
-    p = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-U", "-r", req_file],
-        cwd=os.getcwd(),
-        capture_output=True,
-        text=True,
-    )
-    if p.stdout:
-        print(p.stdout)
-    if p.stderr:
-        print(p.stderr)
-    return p.returncode
-
-
-if os.path.isdir(os.path.join(target, ".git")):
-    run(["git", "-C", target, "pull"])
-elif os.path.isdir(target):
-    raise RuntimeError(
-        f"{target} 已存在但不是 git 倉庫。請在 Colab 執行：!rm -rf {target} 後再重跑，或改 REPO_DIR。"
-    )
-else:
-    run(["git", "clone", REPO_URL], cwd=root)
-
-os.chdir(target)
-print("目前目錄:", os.getcwd())
-
-if pip_install("requirements.txt") != 0:
-    print("\n=== requirements.txt 失敗，改試 requirements-inference.txt ===\n")
-    if not os.path.isfile("requirements-inference.txt") or pip_install("requirements-inference.txt") != 0:
-        raise RuntimeError("pip install 仍失敗，請把上方 pip 錯誤訊息貼出來排查。")
-```
-
-### 3b) 要用 GPU 版 FAISS 訓練（Colab T4 / CUDA 12）
-
-先完成上一格（已在 `sales-prediction` 目錄、已裝 `requirements.txt`）。再執行：**解除 `faiss-cpu`**，改裝 **`faiss-gpu-cu12`**（與 Python 3.12 相容的 CUDA 12 wheel）。
+## CPU 版（`faiss-cpu`，執行階段選 **CPU** 或 **T4** 皆可；FAISS 在 CPU 建索引）
 
 ```python
 import os
 import subprocess
 import sys
 
-subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "faiss-cpu"], check=False)
-subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "faiss"], check=False)
+REPO_URL = "https://github.com/rayliangg/sales-prediction.git"
+REPO_DIR = "sales-prediction"
+SAMPLE_N = 250_000  # 全量改 0
 
-p = subprocess.run(
-    [sys.executable, "-m", "pip", "install", "-U", "-r", "requirements-gpu-cu12.txt"],
-    cwd=os.getcwd(),
-    capture_output=True,
-    text=True,
+root, target = "/content", f"/content/{REPO_DIR}"
+
+def sh(*a, **k):
+    subprocess.run(a, **k, check=True)
+
+if os.path.isdir(f"{target}/.git"):
+    sh("git", "-C", target, "pull")
+elif os.path.isdir(target):
+    raise RuntimeError(f"請先刪除或改名：{target}")
+else:
+    sh("git", "clone", REPO_URL, cwd=root)
+
+os.chdir(target)
+subprocess.run(
+    [sys.executable, "-m", "pip", "install", "-U", "-r", "requirements.txt"],
+    check=True,
 )
-print(p.stdout or "")
-print(p.stderr or "")
-if p.returncode != 0:
-    raise RuntimeError("faiss-gpu-cu12 安裝失敗，請把上方錯誤貼出排查。")
 
-import faiss
-print("faiss.get_num_gpus() =", faiss.get_num_gpus())
+env = {**os.environ, "PYTHONPATH": "src"}
+train_cmd = [
+    sys.executable,
+    "-m",
+    "amazon_name_sales_predictor.train",
+    "--output-dir",
+    "models",
+    "--sample-n",
+    str(SAMPLE_N),
+]
+# 若已上傳 amazon_products.csv 到本專案根目錄，可改為：
+# train_cmd += ["--data-csv", "amazon_products.csv"]
+subprocess.run(train_cmd, cwd=target, env=env, check=True)
+print("完成：models/name_sales_model.joblib 與 models/name_sales_faiss.index")
 ```
 
-預期在已選 **T4** 的情況下，`faiss.get_num_gpus()` 至少為 **1**。接著跑訓練（第 5 節）時，`train.py` 會在 GPU 上建 FAISS 索引再存成 CPU 索引檔。
+---
 
-若你確定要**刪掉舊目錄重新 clone**（會刪除該資料夾內所有檔案）：
+## GPU 版（`faiss-gpu-cu12`，執行階段請選 **T4 GPU**；FAISS 建索引用 GPU）
 
 ```python
-!rm -rf /content/sales-prediction
+import os
+import subprocess
+import sys
+
+REPO_URL = "https://github.com/rayliangg/sales-prediction.git"
+REPO_DIR = "sales-prediction"
+SAMPLE_N = 250_000  # 全量改 0
+
+root, target = "/content", f"/content/{REPO_DIR}"
+
+def sh(*a, **k):
+    subprocess.run(a, **k, check=True)
+
+if os.path.isdir(f"{target}/.git"):
+    sh("git", "-C", target, "pull")
+elif os.path.isdir(target):
+    raise RuntimeError(f"請先刪除或改名：{target}")
+else:
+    sh("git", "clone", REPO_URL, cwd=root)
+
+os.chdir(target)
+subprocess.run(
+    [sys.executable, "-m", "pip", "install", "-U", "-r", "requirements.txt"],
+    check=True,
+)
+subprocess.run(
+    [sys.executable, "-m", "pip", "uninstall", "-y", "faiss-cpu", "faiss"],
+    check=False,
+)
+subprocess.run(
+    [sys.executable, "-m", "pip", "install", "-U", "-r", "requirements-gpu-cu12.txt"],
+    check=True,
+)
+
+import faiss
+
+assert faiss.get_num_gpus() >= 1, "請確認：執行階段 → 變更執行階段類型 → T4 GPU"
+
+env = {**os.environ, "PYTHONPATH": "src"}
+train_cmd = [
+    sys.executable,
+    "-m",
+    "amazon_name_sales_predictor.train",
+    "--output-dir",
+    "models",
+    "--sample-n",
+    str(SAMPLE_N),
+]
+# 同上，有本機 CSV 時可：train_cmd += ["--data-csv", "amazon_products.csv"]
+subprocess.run(train_cmd, cwd=target, env=env, check=True)
+print("完成：models/name_sales_model.joblib 與 models/name_sales_faiss.index")
 ```
 
-再把上面「抓專案」區塊重跑一次（`REPO_DIR` 請與你要刪的資料夾名一致）。
+---
 
-> 如果你還沒把專案推到 GitHub，也可以先把整個專案資料夾上傳到 Colab 左側 Files，再 `%cd` 到該資料夾後執行 `pip install -r requirements.txt`。
-
-## 4) 掛載 Google Drive（用來保存模型）
+## Google Drive（可選）
 
 ```python
 from google.colab import drive
-drive.mount('/content/drive')
+
+drive.mount("/content/drive")
 ```
-
-## 5) 在 Colab 訓練
-
-請確認已在 repo 根目錄（內有 `requirements.txt`、`src/`）。若上一格已 `os.chdir`，通常可直接跑；否則先：
-
-```python
-%cd /content/sales-prediction
-```
-
-（路徑請改成你的 `REPO_DIR`。）
-
-```python
-!PYTHONPATH=src python -m amazon_name_sales_predictor.train --output-dir models --sample-n 250000
-```
-
-全量訓練（較慢）：
-
-```python
-!PYTHONPATH=src python -m amazon_name_sales_predictor.train --output-dir models --sample-n 0
-```
-
-## 6) 複製模型到 Google Drive
 
 ```python
 !mkdir -p /content/drive/MyDrive/amazon-name-sales-models
-!cp models/name_sales_model.joblib /content/drive/MyDrive/amazon-name-sales-models/
-!cp models/name_sales_faiss.index /content/drive/MyDrive/amazon-name-sales-models/
+!cp /content/sales-prediction/models/name_sales_model.joblib /content/sales-prediction/models/name_sales_faiss.index /content/drive/MyDrive/amazon-name-sales-models/
 ```
 
-## 7) 回到本機使用
+（若 `REPO_DIR` 不是 `sales-prediction`，請改路徑。）
 
-把兩個檔案下載或同步回你的本機專案 `models/`：
-- `name_sales_model.joblib`
-- `name_sales_faiss.index`
+## 本機
 
-索引檔是 **CPU 版 FAISS 索引**（訓練時即使用 GPU 建索引，也已轉成 CPU 再存檔），本機推論不需 GPU。
-
-本機若只做 Web / 預測，可只裝較輕的依賴：
-
-```bash
-pip install -r requirements-inference.txt
-```
-
-然後啟動 Web：
-
-```bash
-PYTHONPATH=src streamlit run src/amazon_name_sales_predictor/web.py
-```
-
+下載兩個檔到本機 `models/`，依 **README** 用 `requirements-inference.txt` 跑預測或 Streamlit。

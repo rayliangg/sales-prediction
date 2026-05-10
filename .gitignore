@@ -1,26 +1,19 @@
-# --- Python ---
+# Byte-compiled / caches
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
 *.so
+*.dylib
 
-# Distribution / packaging
+# Packaging
 .Python
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
 *.egg-info/
-.installed.cfg
+.eggs/
+pip-wheel-metadata/
+share/python-wheels/
 *.egg
 MANIFEST
 
@@ -29,46 +22,53 @@ MANIFEST
 venv/
 ENV/
 env/
+.python-version
 
-# Testing / coverage
+# Test & quality
 .pytest_cache/
 .coverage
 .coverage.*
 htmlcov/
 .tox/
 .nox/
-
-# Type checkers / linters
 .mypy_cache/
 .ruff_cache/
+.hypothesis/
 
 # Jupyter
 .ipynb_checkpoints/
+*.ipynb_checkpoints
 
-# Secrets / local env (do not commit)
+# Secrets & local config
 .env
 .env.*
 !.env.example
-
-# Logs
-*.log
-
-# Streamlit (avoid committing secrets)
 .streamlit/secrets.toml
 
-# IDE / editor
-.idea/
-.vscode/
+# Logs & temp
+*.log
+*.tmp
+*.temp
 *.swp
 *.swo
 *~
 
-# OS
+# Editors & OS
+.idea/
+.vscode/
 .DS_Store
 Thumbs.db
+Desktop.ini
 
-# --- This project: large generated artifacts ---
+# --- Project: trained models ---
 models/*.joblib
 models/*.bin
 models/*.index
 !models/.gitkeep
+
+# --- Project: large / local data (do not commit) ---
+/amazon_products.csv
+amazon_products*.csv.bak
+*.csv.bak
+*.clean.tmp
+*.slim.tmp

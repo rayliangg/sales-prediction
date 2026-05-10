@@ -13,7 +13,13 @@ from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
-from .data import download_dataset, load_dataset_frame, prepare_training_frame
+from .data import (
+    download_dataset,
+    load_dataset_csv,
+    load_dataset_frame,
+    prepare_training_frame,
+    resolve_local_csv_path,
+)
 
 
 def _faiss_gpu_count() -> int:
@@ -54,11 +60,20 @@ def build_pipeline() -> Pipeline:
     )
 
 
-def train(output_dir: Path, sample_n: int) -> None:
+def train(output_dir: Path, sample_n: int, data_csv: Path | None) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    dataset_dir = download_dataset()
-    raw_df = load_dataset_frame(dataset_dir, sample_n=sample_n)
+    csv_path = resolve_local_csv_path(data_csv)
+    if csv_path is not None:
+        print(f"Loading data from CSV: {csv_path}")
+        raw_df = load_dataset_csv(csv_path, sample_n=sample_n)
+    else:
+        if data_csv is not None:
+            raise FileNotFoundError(f"--data-csv not found: {data_csv}")
+        print("Downloading dataset (KaggleHub)...")
+        dataset_dir = download_dataset()
+        raw_df = load_dataset_frame(dataset_dir, sample_n=sample_n)
+
     df, src_name, src_category, src_target = prepare_training_frame(raw_df)
 
     x_train, x_test, y_train, y_test = train_test_split(
@@ -123,10 +138,16 @@ def parse_args() -> argparse.Namespace:
         default=250000,
         help="Rows to sample for faster training; use 0 for full dataset.",
     )
+    parser.add_argument(
+        "--data-csv",
+        type=Path,
+        default=None,
+        help="Local products CSV. If omitted, uses AMAZON_PRODUCTS_CSV env or ./amazon_products.csv when present; else KaggleHub.",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
     sample_n = args.sample_n if args.sample_n > 0 else None
-    train(Path(args.output_dir), sample_n=sample_n)
+    train(Path(args.output_dir), sample_n=sample_n, data_csv=args.data_csv)

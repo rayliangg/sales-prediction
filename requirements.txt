@@ -1,4 +1,4 @@
 -r requirements-base.txt
 # Default: CPU FAISS (works on Colab Python 3.12, macOS, Linux).
-# PyPI has no faiss-gpu wheel for many Python 3.12 environments — use requirements-gpu.txt if you have a match.
+# GPU FAISS on CUDA 12 / Colab: see requirements-gpu-cu12.txt
 faiss-cpu

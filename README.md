@@ -1,55 +1,43 @@
 # Amazon Product Naming vs Sales Predictor
 
-這個專案會：
-- 自動下載 Amazon Products Dataset（你提供的 KaggleHub 來源）
-- 用產品名稱訓練「預測銷售量」模型
-- 根據語意相似商品做正規化（同質產品比較），輸出 z-score 和百分位
+從 Amazon 商品資料訓練：**產品名稱 → 預測銷量**，並以 FAISS 找相似品做 z-score / 百分位正規化。
 
-## 1) 安裝
-
-預設為 **`faiss-cpu`**（含 **Google Colab Python 3.12**、macOS、一般 Linux 都可 `pip install`）。
+## 安裝
 
 ```bash
 cd amazon-name-sales-predictor
-python -m venv .venv
-source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**GPU 版 FAISS（CUDA 12，含 Google Colab T4 + Python 3.12）** 請用：
+**GPU 建索引（CUDA 12 / Colab T4）**：先 `pip uninstall -y faiss-cpu faiss`，再 `pip install -r requirements-gpu-cu12.txt`。訓練仍會寫出 **CPU 可讀** 的 `name_sales_faiss.index`。
+
+**僅推論 / Web**：`pip install -r requirements-inference.txt`
+
+## 訓練
+
+**資料來源**（優先序）：`--data-csv 路徑` → 環境變數 `AMAZON_PRODUCTS_CSV` → 目前目錄 **`amazon_products.csv` 存在則直接讀** → 否則用 **KaggleHub** 下載。
 
 ```bash
-pip uninstall -y faiss-cpu faiss
-pip install -r requirements-gpu-cu12.txt
-```
-
-（套件名為 **`faiss-gpu-cu12`**，不要裝舊的 `faiss-gpu`，在 3.12 上常裝不起來。）
-
-若為 **較舊 Python + 舊 CUDA**，可再試：
-
-```bash
-pip install -r requirements-gpu.txt
-```
-
-### 訓練用 GPU FAISS、推論用 CPU（建議部署方式）
-
-- **訓練**（`train.py`）：預設 **`faiss-cpu`**；若已安裝 **`faiss-gpu-cu12`**（或 **`faiss-gpu`**）且 `faiss.get_num_gpus() > 0`，會在 GPU 上建索引，再 **`index_gpu_to_cpu`** 寫入 `models/name_sales_faiss.index`（**仍是 CPU 可讀索引**）。
-- **推論 / Web**：一律 **`faiss.read_index` + `search`（CPU）**。部署機可只裝：
-
-```bash
-pip install -r requirements-inference.txt
-```
-
-## 2) 訓練模型
-
-```bash
+cd amazon-name-sales-predictor
 PYTHONPATH=src python -m amazon_name_sales_predictor.train --output-dir models --sample-n 250000
 ```
 
-參數說明：
-- `--sample-n`: 先抽樣幾筆訓練（0 代表全量資料，會慢很多）
+指定 CSV：
 
-## 3) 預測
+```bash
+PYTHONPATH=src python -m amazon_name_sales_predictor.train --output-dir models --sample-n 250000 --data-csv ./amazon_products.csv
+```
+
+**整份 CSV 去掉非法列**（分塊重寫、預設備份 `.csv.bak`）：
+
+```bash
+PYTHONPATH=src python scripts/clean_amazon_products_csv.py --input amazon_products.csv
+```
+
+讀入訓練時也會再套同一套規則；`--sample-n 0` 為全量（很慢）。
+
+## 預測
 
 ```bash
 PYTHONPATH=src python -m amazon_name_sales_predictor.predict \
@@ -57,41 +45,17 @@ PYTHONPATH=src python -m amazon_name_sales_predictor.predict \
   --name "Wireless Bluetooth Earbuds Noise Cancelling"
 ```
 
-輸出重點：
-- `predicted_sales`: 預測銷售量
-- `normalized_z_score`: 在相似商品中的標準分數（>0 表示高於同質平均）
-- `normalized_percentile_in_similars`: 在相似商品中的百分位（例如 80 表示贏過 80% 相似品）
-- `inferred_category`: 由相似商品推斷出的主要類別
-
-## 4) Web 介面
-
-安裝完依賴後，直接啟動：
+## Web
 
 ```bash
 PYTHONPATH=src streamlit run src/amazon_name_sales_predictor/web.py
 ```
 
-介面功能：
-- 輸入產品名稱即時預測
-- 顯示同質平均、Z 分數、同質百分位
-- 顯示 Top K 相似商品做對照（依側欄設定）
+## Colab
 
-## 5) 你的任務對應方式
+見 **`COLAB.md`**。
 
-你目前的需求是 `input = 產品名稱`, `output = 可能銷售量`，並且要按同性質產品正規化。
+## 注意
 
-本專案的做法：
-1. 用名稱文字特徵（TF-IDF）預測銷售量
-2. 用 FAISS（`IndexHNSWFlat` + L2 正規化後的內積，等同 cosine）找到語意相似商品（視為同性質）
-3. 在這批相似商品中計算平均、標準差、百分位
-
-這樣你可以知道：
-- 絕對值：這個命名大概能賣多少
-- 相對值：這個命名在同類商品中是強還弱
-
-## 6) 注意
-
-- 資料集欄位名稱如果變動，程式會自動嘗試匹配常見欄位。
-- 如果你想提高精度，建議再加入 `price`、`review count`、`rating` 等欄位做多特徵模型。
-- 若要改用 Colab 訓練，請看 `COLAB.md`（預設 `faiss-cpu`，與 Colab Python 3.12 相容）。
-
+- 資料欄位會自動對應常見名稱（`title`、`boughtInLastMonth` 等）。
+- 進階精度可再加入價格、評論數、星等作為特徵。
