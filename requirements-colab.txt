@@ -1,0 +1,2 @@
+# Colab / Python 3.12: same as default (faiss-cpu). GPU faiss is not available via pip on many runtimes.
+-r requirements.txt

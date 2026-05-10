@@ -1,4 +1,4 @@
 -r requirements-base.txt
-# NVIDIA CUDA + GPU build of FAISS (Colab T4, Linux + CUDA, etc.)
-# No GPU / Apple Silicon: use `pip install -r requirements-cpu.txt` instead.
-faiss-gpu
+# Default: CPU FAISS (works on Colab Python 3.12, macOS, Linux).
+# PyPI has no faiss-gpu wheel for many Python 3.12 environments — use requirements-gpu.txt if you have a match.
+faiss-cpu

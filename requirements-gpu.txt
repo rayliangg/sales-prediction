@@ -1,0 +1,4 @@
+-r requirements-base.txt
+# Optional: NVIDIA CUDA FAISS. PyPI often returns "No matching distribution" on Python 3.12+ (e.g. Colab).
+# Try conda instead: conda install -c pytorch faiss-gpu=...  or use Python<=3.11 venv with pip faiss-gpu.
+faiss-gpu

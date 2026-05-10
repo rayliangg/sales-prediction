@@ -1,2 +1,2 @@
-# Same packages as inference (no NVIDIA). Use for CPU-only training or dev on Mac.
--r requirements-inference.txt
+# Alias: default stack is already faiss-cpu (see requirements.txt).
+-r requirements.txt

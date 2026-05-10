@@ -7,7 +7,7 @@
 
 ## 1) 安裝
 
-預設依賴為 **`faiss-gpu`**（需 NVIDIA + CUDA，例如 Colab T4、多數 Linux GPU 機）。
+預設為 **`faiss-cpu`**（含 **Google Colab Python 3.12**、macOS、一般 Linux 都可 `pip install`）。
 
 ```bash
 cd amazon-name-sales-predictor
@@ -16,22 +16,22 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-若沒有 NVIDIA GPU（例如 Apple Silicon），請改裝 CPU 版 FAISS：
+若你的環境能裝 **PyPI 的 `faiss-gpu`**（常見於 **較舊的 Python**，例如 3.10 / 3.11 + 對應 CUDA），可改用：
 
 ```bash
-pip install -r requirements-cpu.txt
+pip install -r requirements-gpu.txt
 ```
+
+> PyPI 上 **`faiss-gpu` 常沒有 Python 3.12 的 wheel**，因此會出現 `No matching distribution found for faiss-gpu`。這不是專案壞掉，而是套件發佈限制；需要 GPU 版時可改用 **conda** 或 **較舊的 Python venv**。
 
 ### 訓練用 GPU FAISS、推論用 CPU（建議部署方式）
 
-- **訓練**（`train.py`）：安裝 `requirements.txt`（內含 **`faiss-gpu`**）。有 GPU 時會在 GPU 上建索引，再 **`index_gpu_to_cpu`** 後寫入 `models/name_sales_faiss.index`，檔案本身是 **CPU 索引**，不依賴 GPU。
-- **推論 / Web**（`predict.py`、`web.py`）：只需 **`faiss.read_index` + `search`**，全程在 **CPU**。部署機若沒 GPU，請裝：
+- **訓練**（`train.py`）：預設安裝 **`faiss-cpu`**；若已安裝 **`faiss-gpu`** 且 `faiss.get_num_gpus() > 0`，會在 GPU 上建索引，再 **`index_gpu_to_cpu`** 寫入 `models/name_sales_faiss.index`（**仍是 CPU 可讀索引**）。
+- **推論 / Web**：一律 **`faiss.read_index` + `search`（CPU）**。部署機可只裝：
 
 ```bash
 pip install -r requirements-inference.txt
 ```
-
-本機裝 `faiss-gpu` 時推論同樣走 CPU，但若想減少依賴體積，推論環境用 `requirements-inference.txt` 即可。
 
 ## 2) 訓練模型
 
@@ -86,5 +86,5 @@ PYTHONPATH=src streamlit run src/amazon_name_sales_predictor/web.py
 
 - 資料集欄位名稱如果變動，程式會自動嘗試匹配常見欄位。
 - 如果你想提高精度，建議再加入 `price`、`review count`、`rating` 等欄位做多特徵模型。
-- 若要改用 Colab 訓練，請看 `COLAB.md`。
+- 若要改用 Colab 訓練，請看 `COLAB.md`（預設 `faiss-cpu`，與 Colab Python 3.12 相容）。
 
