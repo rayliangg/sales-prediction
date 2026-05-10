@@ -4,38 +4,46 @@ import argparse
 import json
 from pathlib import Path
 
-import hnswlib
+import faiss
 import joblib
 import numpy as np
 
 
 def predict_one(model_path: Path, product_name: str, top_k: int = 20) -> dict:
     artifact = joblib.load(model_path)
+    if "faiss_index_file" not in artifact:
+        raise ValueError(
+            "This model was trained with an older index format. "
+            "Re-train with: PYTHONPATH=src python -m amazon_name_sales_predictor.train --output-dir models"
+        )
+
     pipeline = artifact["pipeline"]
     svd = artifact["svd"]
     train_names = artifact["train_names"]
     train_sales = np.array(artifact["train_sales"], dtype=float)
     train_categories = np.array(artifact["train_categories"], dtype=object)
-    hnsw_dim = int(artifact["hnsw_dim"])
-    hnsw_space = artifact.get("hnsw_space", "cosine")
-    hnsw_index_file = artifact["hnsw_index_file"]
+    faiss_dim = int(artifact["faiss_dim"])
+    faiss_index_file = artifact["faiss_index_file"]
 
     pred_sales = float(np.expm1(pipeline.predict([product_name]))[0])
     tfidf = pipeline.named_steps["tfidf"]
     vec_sparse = tfidf.transform([product_name])
-    vec_dense = svd.transform(vec_sparse).astype(np.float32)
+    vec_dense = np.ascontiguousarray(svd.transform(vec_sparse), dtype=np.float32)
+    faiss.normalize_L2(vec_dense)
 
-    index_path = model_path.parent / hnsw_index_file
+    index_path = model_path.parent / faiss_index_file
     if not index_path.exists():
-        raise FileNotFoundError(f"HNSW index not found: {index_path}")
-    hnsw = hnswlib.Index(space=hnsw_space, dim=hnsw_dim)
-    hnsw.load_index(str(index_path), max_elements=len(train_names))
+        raise FileNotFoundError(f"FAISS index not found: {index_path}")
 
+    # CPU-only inference: index file is always written by train as a CPU index
+    # (even when train used faiss-gpu + index_gpu_to_cpu).
+    index = faiss.read_index(str(index_path))
     top_k = max(1, min(int(top_k), len(train_names)))
-    hnsw.set_ef(max(100, top_k))
-    labels, distances = hnsw.knn_query(vec_dense, k=top_k)
-    idx = labels[0]
-    dist = distances[0]
+    index.hnsw.efSearch = max(100, top_k)
+
+    similarities, indices = index.search(vec_dense, top_k)
+    idx = indices[0]
+    sim_row = similarities[0]
 
     neighbor_sales = train_sales[idx]
     neighbor_categories = train_categories[idx]
@@ -49,13 +57,16 @@ def predict_one(model_path: Path, product_name: str, top_k: int = 20) -> dict:
 
     neighbors = []
     for rank, i in enumerate(idx, start=1):
+        sim = float(sim_row[rank - 1])
         neighbors.append(
             {
                 "rank": rank,
                 "name": train_names[int(i)],
                 "sales": float(train_sales[int(i)]),
                 "category": str(train_categories[int(i)]),
-                "distance": float(dist[rank - 1]),
+                # Higher inner product = more similar; expose as "distance" via negation for sorting UX.
+                "distance": -sim,
+                "similarity": sim,
             }
         )
 
@@ -92,4 +103,3 @@ if __name__ == "__main__":
     args = parse_args()
     result = predict_one(Path(args.model_path), args.name, args.top_k)
     print(json.dumps(result, ensure_ascii=False, indent=2))
-

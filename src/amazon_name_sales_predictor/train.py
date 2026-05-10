@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import hnswlib
+import faiss
 import joblib
 import numpy as np
 from sklearn.decomposition import TruncatedSVD
@@ -14,6 +14,35 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 
 from .data import download_dataset, load_dataset_frame, prepare_training_frame
+
+
+def _faiss_gpu_count() -> int:
+    try:
+        return int(faiss.get_num_gpus())
+    except Exception:
+        return 0
+
+
+def _build_faiss_hnsw_index(x_all_dense: np.ndarray, svd_dim: int, m: int = 32) -> tuple[faiss.Index, bool]:
+    """Build HNSW index. Optional GPU `add`; always returns a CPU index for `write_index` / CPU inference."""
+    index_cpu = faiss.IndexHNSWFlat(svd_dim, m, faiss.METRIC_INNER_PRODUCT)
+    index_cpu.hnsw.efConstruction = 200
+    index_cpu.hnsw.efSearch = 100
+
+    if _faiss_gpu_count() > 0:
+        try:
+            res = faiss.StandardGpuResources()
+            co = faiss.GpuClonerOptions()
+            co.useFloat16 = False
+            gpu_index = faiss.index_cpu_to_gpu(res, 0, index_cpu, co)
+            gpu_index.add(x_all_dense)
+            out = faiss.index_gpu_to_cpu(gpu_index)
+            return out, True
+        except Exception as exc:
+            print(f"[faiss] GPU index build failed ({exc}); using CPU.")
+
+    index_cpu.add(x_all_dense)
+    return index_cpu, False
 
 
 def build_pipeline() -> Pipeline:
@@ -47,23 +76,22 @@ def train(output_dir: Path, sample_n: int) -> None:
     x_all = tfidf.transform(df["name"])
     svd_dim = min(256, max(2, x_all.shape[1] - 1))
     svd = TruncatedSVD(n_components=svd_dim, random_state=42)
-    x_all_dense = svd.fit_transform(x_all).astype(np.float32)
+    x_all_dense = np.ascontiguousarray(svd.fit_transform(x_all), dtype=np.float32)
+    faiss.normalize_L2(x_all_dense)
 
-    hnsw = hnswlib.Index(space="cosine", dim=svd_dim)
-    hnsw.init_index(max_elements=x_all_dense.shape[0], ef_construction=200, M=32)
-    labels = np.arange(x_all_dense.shape[0])
-    hnsw.add_items(x_all_dense, labels)
-    hnsw.set_ef(100)
+    # HNSW graph on unit vectors with inner product = cosine similarity search.
+    index, used_gpu = _build_faiss_hnsw_index(x_all_dense, svd_dim, m=32)
 
-    index_file = output_dir / "name_sales_hnsw.bin"
-    hnsw.save_index(str(index_file))
+    index_file = output_dir / "name_sales_faiss.index"
+    faiss.write_index(index, str(index_file))
 
     artifact = {
         "pipeline": pipe,
         "svd": svd,
-        "hnsw_index_file": index_file.name,
-        "hnsw_space": "cosine",
-        "hnsw_dim": svd_dim,
+        "faiss_index_file": index_file.name,
+        "faiss_dim": svd_dim,
+        "faiss_metric": "inner_product_on_l2_normalized",
+        "faiss_trained_on_gpu": used_gpu,
         "train_names": df["name"].tolist(),
         "train_sales": df["sales"].tolist(),
         "train_categories": df["category"].tolist(),
@@ -78,6 +106,7 @@ def train(output_dir: Path, sample_n: int) -> None:
     joblib.dump(artifact, out_file)
 
     print(f"Model saved to: {out_file}")
+    print(f"FAISS index saved to: {index_file} (GPU build: {used_gpu})")
     print(f"Test MAE: {mae:.2f}")
     print(f"Training rows: {len(df)}")
     print(f"Source columns -> name: {src_name}, category: {src_category}, sales: {src_target}")
@@ -101,4 +130,3 @@ if __name__ == "__main__":
     args = parse_args()
     sample_n = args.sample_n if args.sample_n > 0 else None
     train(Path(args.output_dir), sample_n=sample_n)
-

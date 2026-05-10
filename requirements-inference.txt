@@ -1,0 +1,4 @@
+# Inference / Web only (CPU). Use after training on GPU with requirements.txt.
+# Saves disk vs faiss-gpu; index files from train are always CPU-serializable.
+-r requirements-base.txt
+faiss-cpu

@@ -1,4 +1,4 @@
-# Byte-compiled / cache
+# --- Python ---
 __pycache__/
 *.py[cod]
 *$py.class
@@ -18,9 +18,11 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # Virtual environments
 .venv/
@@ -43,6 +45,14 @@ htmlcov/
 # Jupyter
 .ipynb_checkpoints/
 
+# Secrets / local env (do not commit)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
 # Streamlit (avoid committing secrets)
 .streamlit/secrets.toml
 
@@ -57,7 +67,8 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Trained artifacts (large; regenerate with train script)
+# --- This project: large generated artifacts ---
 models/*.joblib
 models/*.bin
+models/*.index
 !models/.gitkeep

@@ -7,12 +7,31 @@
 
 ## 1) 安裝
 
+預設依賴為 **`faiss-gpu`**（需 NVIDIA + CUDA，例如 Colab T4、多數 Linux GPU 機）。
+
 ```bash
 cd amazon-name-sales-predictor
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+若沒有 NVIDIA GPU（例如 Apple Silicon），請改裝 CPU 版 FAISS：
+
+```bash
+pip install -r requirements-cpu.txt
+```
+
+### 訓練用 GPU FAISS、推論用 CPU（建議部署方式）
+
+- **訓練**（`train.py`）：安裝 `requirements.txt`（內含 **`faiss-gpu`**）。有 GPU 時會在 GPU 上建索引，再 **`index_gpu_to_cpu`** 後寫入 `models/name_sales_faiss.index`，檔案本身是 **CPU 索引**，不依賴 GPU。
+- **推論 / Web**（`predict.py`、`web.py`）：只需 **`faiss.read_index` + `search`**，全程在 **CPU**。部署機若沒 GPU，請裝：
+
+```bash
+pip install -r requirements-inference.txt
+```
+
+本機裝 `faiss-gpu` 時推論同樣走 CPU，但若想減少依賴體積，推論環境用 `requirements-inference.txt` 即可。
 
 ## 2) 訓練模型
 
@@ -56,7 +75,7 @@ PYTHONPATH=src streamlit run src/amazon_name_sales_predictor/web.py
 
 本專案的做法：
 1. 用名稱文字特徵（TF-IDF）預測銷售量
-2. 用 HNSW（Hierarchical Navigable Small World）找到語意相似商品（視為同性質）
+2. 用 FAISS（`IndexHNSWFlat` + L2 正規化後的內積，等同 cosine）找到語意相似商品（視為同性質）
 3. 在這批相似商品中計算平均、標準差、百分位
 
 這樣你可以知道：

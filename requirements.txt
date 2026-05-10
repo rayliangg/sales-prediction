@@ -1,7 +1,4 @@
-kagglehub
-pandas
-numpy
-scikit-learn
-joblib
-streamlit
-hnswlib
+-r requirements-base.txt
+# NVIDIA CUDA + GPU build of FAISS (Colab T4, Linux + CUDA, etc.)
+# No GPU / Apple Silicon: use `pip install -r requirements-cpu.txt` instead.
+faiss-gpu
